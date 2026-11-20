@@ -198,7 +198,10 @@ Headings and the title use `"Playfair Display"` (500, 700). Body uses DM Sans (3
 
 - Target: WCAG 2.2 AA (public Creative Europe deliverable D5.6)
 - The 3D scene has a screen-reader and keyboard-reachable data table as its text alternative; every new data source must appear in it
-- Canvas keys: arrows orbit, Shift+arrows pan, +/- zoom (only while the canvas has focus)
+- Canvas pointer controls: left-drag pans, right-drag rotates (Alt-drag or Ctrl-drag for trackpads), wheel zooms. Elevation is locked at 45°. A click on a marker selects it on release; a drag that starts on a marker pans instead.
+- Canvas keys: arrows pan, Shift+Left/Right rotates, +/- zoom (only while the canvas has focus)
+- Wherever the controls are described (header hint, help dialog, canvas `aria-label`, this list) all four must say the same thing; change them together
+- Not yet met: the pointer controls have no on-screen single-pointer equivalent (WCAG 2.5.7); see TODO and the audit addendum
 - Toggle state never relies on color alone (filled vs hollow markers, `aria-pressed`)
 - Loading and error screens (`TimeMapPage.tsx`) use `role="status"` and `role="alert"` and the same dark/light background as the map
 - Audit reference: [wcag-audit-5d-timemap.md](research/wcag-audit-5d-timemap.md)

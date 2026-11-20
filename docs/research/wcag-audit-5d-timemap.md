@@ -7,6 +7,23 @@
 
 ---
 
+## Addendum 2026-11-18: pointer and keyboard controls in the v2 component
+
+This audit covers the earlier `5d-timemap-a11y.jsx`. The delivered component, `frontend/src/features/timemap/TimeMap.jsx`, changed its map controls on 2026-11-18 (full description: [timemap-frontend-deployment.md](./timemap-frontend-deployment.md#camera-and-pointer-controls)). The rows below replace the statements in this document for those criteria. This is an assessment of the controls, not a re-audit of v2; the rest of v2 is still unaudited (see TODO).
+
+**Controls now:** left-drag pans, right-drag (or Alt/Ctrl-drag) rotates, wheel zooms; keys: arrows pan, Shift+Left/Right rotates, +/- zoom. Wherever this document says "arrow keys orbit, Shift+arrows pan", read the new mapping.
+
+| Criterion | Status | Why |
+|-----------|--------|-----|
+| 2.1.1 Keyboard (A) | Pass | Every camera action has a key (pan, rotate, zoom); marker selection is reachable through the sites list. Checked in Chrome |
+| 2.1.2 No Keyboard Trap (A) | Pass | Tab leaves the canvas (checked in Chrome) |
+| 2.5.2 Pointer Cancellation (A) | Pass for the map, open for the timeline | Selecting a marker now completes on release, and moving the pointer past the 4 px slop turns the press into a drag instead of a selection. The earlier text said selection was not on the down-event, but the v2 code selected on pointer-down before this change. Open: the timeline slider still sets the year on pointer-down, and pressing on the canvas stops a running fly-to animation |
+| 2.5.7 Dragging Movements (AA) | **Not met** | Panning and rotating work by dragging, and the only alternatives are keys. The W3C understanding document says a keyboard alternative does not satisfy this criterion; it needs a single-pointer alternative such as on-screen pan, rotate and zoom buttons, and its own example is a map with arrow buttons. The earlier PASS rested on the keyboard equivalents and is superseded. The timeline is unaffected: a single click on its track sets the year |
+| 2.5.1 Pointer Gestures (A) | Not triggered today | The map uses no multipoint or path-based gesture (a second finger is ignored). It applies as soon as pinch-zoom or two-finger rotate is added, and then needs on-screen buttons too |
+| 2.5.8 Target Size (Minimum) (AA) | Unchanged | Markers in the scene are smaller than 24 px; the sites list is the equivalent control |
+
+Usability gaps that are not WCAG failures: touch users cannot rotate or zoom, and there is no "reset view" control.
+
 ## Summary
 
 | Verdict | Count |

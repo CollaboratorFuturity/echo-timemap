@@ -11,7 +11,7 @@ Public 5D TimeMap for the ECHO project (deliverable D5.6): an interactive 3D map
 | State       | React local state inside the TimeMap component; map data loaded once from the API into `features/timemap/data.ts` |
 | Auth        | None for visitors (public, read-only). JWT helpers and `X-Admin-Key` admin auth are scaffolded for Phase 3 |
 | Data        | PostgreSQL 16 tables `sources`, `records`, `basemap_countries`, `basemap_insets`; seeded from `backend/app/seed_data/*.json` on first start |
-| Deploy      | Docker Compose (db + backend + frontend nginx). Target server medusa on 127.0.0.1:8109/8110 behind a Cloudflare tunnel; local defaults 3000/8000 |
+| Deploy      | Docker Compose (db + backend + frontend nginx). Live at https://5dtimemap.echoimmersive.eu on server medusa (127.0.0.1:8109/8110 behind a Cloudflare tunnel); local defaults 3000/8000 |
 | Fonts       | DM Sans + Playfair Display, self-hosted via Fontsource (bundled by Vite) |
 | Rate limit  | slowapi with Cloudflare-aware IP resolution             |
 
@@ -51,6 +51,7 @@ echo-timemap/
 │   │   │   ├── TimeMapPage.tsx  # Loads data + map chunk in parallel; loading and error screens
 │   │   │   ├── data.ts          # Fetches sources/records/basemap; exposes them as live module bindings
 │   │   │   ├── TimeMap.jsx      # The prototype component, reading its data from ./data
+│   │   │   ├── cameraRig.js     # Camera math: orbit state -> camera pose, grab-the-ground pan, keyboard steps
 │   │   │   └── TimeMap.d.ts     # Type declaration so TS can import the JSX component
 │   │   ├── components/
 │   │   └── pages/
@@ -85,6 +86,7 @@ echo-timemap/
 - **Record shape:** the API returns records with the prototype's short keys (`n`, `c`, `la`, `sy` ...). `RECORD_FIELDS` in `backend/app/models/timemap.py` maps each short key to a named column. Null fields are left out of responses.
 - **Record ids** follow the prototype scheme `<src>-<index>` (`unesco-0`, `nemo-23`, `echo-14`); `seq` keeps the original display order.
 - **Source registry:** the `sources` table (label, kind `site` or `point`, marker shape, color, default on, panel order). Point sources without a color get one from the fallback palette in `data.ts`.
+- **Camera and pointer controls:** left-drag pans, right-drag rotates, the wheel zooms. The camera looks down at a fixed 45° and opens north-up, so only the compass direction (rotation) and the distance change. State and input handling live in `TimeMap.jsx`; the camera math is in `cameraRig.js`. Full behavior, limits and how it was verified: [timemap-frontend-deployment.md](docs/research/timemap-frontend-deployment.md#camera-and-pointer-controls).
 - **Time model:** `sy`/`ey` are start/end years, negative = BCE. Column height encodes origin age on a square-root curve between 5000 BCE and 2025 CE (`HMIN`, `HMAX`).
 - **No third-party requests at runtime.** The built site loads nothing from outside its own origin. External URLs (UNESCO listings, museum sites) are click-through links only.
 - **Backend pattern:** Routers -> Services -> Models. All routes under `/api/v1/`, health at `/health`. Public routes are read-only, rate-limited to 120 requests/minute per client IP, gzip-compressed, and sent with `Cache-Control: public, max-age=300`.
@@ -108,7 +110,7 @@ echo-timemap/
 See [docs/PROGRESS.md](docs/PROGRESS.md) for the full implementation checklist.
 
 **Current status**:
-- 🚧 **Phase 1 in progress** -- Prototype runs inside the platform with self-hosted fonts; server deployment pending
+- 🚧 **Phase 1 in progress** -- Live at https://5dtimemap.echoimmersive.eu with self-hosted fonts; security headers and the WCAG 2.2 AA re-audit are pending
 - ✅ **Phase 2 complete** -- Data in PostgreSQL, public read API, map loads from the API, museum coordinates corrected
 
 <!--

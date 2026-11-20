@@ -36,8 +36,8 @@ Not every feature needs all three stages. Some only need a deployment doc (e.g.,
 ### Deployment Docs
 | File | Feature | Status |
 |------|---------|--------|
-| [timemap-frontend-deployment.md](./timemap-frontend-deployment.md) | Map component in the React frontend, data loading from the API, self-hosted fonts, server steps | In progress (stack verified 2026-11-05) |
-| [timemap-api-deployment.md](./timemap-api-deployment.md) | PostgreSQL tables, seed data and provenance, public read API, operations | In progress (verified on PostgreSQL 16, 2026-11-05) |
+| [timemap-frontend-deployment.md](./timemap-frontend-deployment.md) | Map component in the React frontend, data loading from the API, self-hosted fonts, server steps | Deployed 2026-11-09 |
+| [timemap-api-deployment.md](./timemap-api-deployment.md) | PostgreSQL tables, seed data and provenance, public read API, operations | Deployed 2026-11-09 |
 
 <!--
   Add rows as you create deployment docs. Format:
@@ -68,4 +68,4 @@ Not every feature needs all three stages. Some only need a deployment doc (e.g.,
 
 ---
 
-**Last Updated:** 2026-11-05
+**Last Updated:** 2026-11-09

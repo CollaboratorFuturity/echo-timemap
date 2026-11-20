@@ -5,7 +5,7 @@ Last updated: 2026-11-09
 ## Machine
 
 - **Server**: medusa (Debian, SSH alias `medusa-local`), shared with the other Futurity apps
-- **Status**: deployment pending
+- **Status**: live since 2026-11-09
 
 ## This App
 
@@ -15,7 +15,7 @@ Last updated: 2026-11-09
 | Backend | 127.0.0.1:8110 | echo-timemap-backend |
 | Database | 5432 (internal only, no host port) | echo-timemap-db |
 
-- **Subdomain**: not assigned yet
+- **Subdomain**: https://5dtimemap.echoimmersive.eu
 - **Tunnel**: medusa's remotely managed Cloudflare tunnel. Routes are set in the Cloudflare dashboard; there is no `/etc/cloudflared/config.yml` on this host.
 - **Compose file**: `~/Repositories/echo-timemap/docker-compose.yml`
 - **Volumes**: `echo-timemap_pgdata`, `echo-timemap_uploads`

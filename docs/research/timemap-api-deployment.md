@@ -1,6 +1,6 @@
 # TimeMap Database and API -- Deployment
 
-**Status:** In progress. Verified on PostgreSQL 16 in the sandbox 2026-11-05; server deployment pending (see timemap-frontend-deployment.md for the server steps).
+**Status:** Deployed 2026-11-09 on medusa (see timemap-frontend-deployment.md for the server steps). Verified on PostgreSQL 16 in the sandbox 2026-11-05.
 
 ## Components
 

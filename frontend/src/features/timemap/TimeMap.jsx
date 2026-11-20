@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import * as THREE from "three";
 import { SOURCES, RECORDS, SITE_RECORDS, POINT_RECORDS, EU_MAP, INSETS } from "./data";
+import { TILT, DRAG_PX, DRAG_PX_TOUCH, groundPlane, placeCamera, snapshotCamera, panTarget, screenStep } from "./cameraRig";
 
 /* ================= DATA =================
    SOURCES (registry), RECORDS, SITE_RECORDS, POINT_RECORDS, EU_MAP and
@@ -99,6 +100,7 @@ function drawInsetLabel(ctx, label, sc) {
 function geo(lat, lon) { return [(lon + 10) * 1.15, -(lat - 34) * 1.55]; }
 const [CX, CZ] = geo(50, 12);
 const TGT_X = CX - 7, TGT_Z = CZ + 2;
+const GROUND = groundPlane(SURF);   // the map surface, grabbed by drag-to-pan
 function insetFor(lat, lon) {
   for (const k in INSETS) { const [a, b, c, d] = INSETS[k].bbox; if (lat >= a && lat <= b && lon >= c && lon <= d) return k; }
   return null;
@@ -123,7 +125,8 @@ export default function TimeMap() {
   const ray = useRef(new THREE.Raycaster()), mouse = useRef(new THREE.Vector2());
   const pins = useRef([]), ptPins = useRef([]);
   const planeRef = useRef(null);
-  const orbit = useRef({ theta: -0.7, phi: 0.62, dist: 74, tx: 0, tz: 0 });
+  // Camera state, see cameraRig.js. North up (theta 0), elevation locked at 45 degrees.
+  const orbit = useRef({ theta: 0, phi: TILT, dist: 74, tx: 0, tz: 0 });
   const drag = useRef(null);
   const flyRef = useRef(null), reduceRef = useRef(false);
   const yearRef = useRef(2025), playRef = useRef(false), lastSet = useRef(2025);
@@ -301,9 +304,7 @@ export default function TimeMap() {
           if (Math.abs(f.tx - o.tx) + Math.abs(f.tz - o.tz) < 0.08) flyRef.current = null;
         }
       }
-      const o = orbit.current;
-      cam.position.set(TGT_X + o.tx + o.dist * Math.sin(o.theta) * Math.cos(o.phi), o.dist * Math.sin(o.phi), TGT_Z + o.tz + o.dist * Math.cos(o.theta) * Math.cos(o.phi));
-      cam.lookAt(TGT_X + o.tx, 4.5, TGT_Z + o.tz);
+      placeCamera(cam, orbit.current, TGT_X, TGT_Z);
       rndr.render(scene, cam);
     };
     tick();
@@ -401,33 +402,70 @@ export default function TimeMap() {
     });
   }, [flPts]);
 
-  const pd = useCallback(e => {
-    const wrap = wrapRef.current, r = wrap.getBoundingClientRect();
+  /* ---- pointer controls ----
+     Left-drag pans (grab the ground). Right-drag rotates; Alt+drag or Ctrl+drag does the same,
+     for trackpads with no right button. A press that moves less than the slop is a click, and a
+     left click on a marker selects it. Selection happens on release, so a drag that starts on a
+     marker pans instead of selecting. Only events that start on the canvas itself drive the
+     camera; the sites list and the help dialog sit inside the same element and keep their own clicks. */
+  const toNdc = useCallback(e => {
+    const r = wrapRef.current.getBoundingClientRect();
     mouse.current.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.current.y = -((e.clientY - r.top) / r.height) * 2 + 1;
-    ray.current.setFromCamera(mouse.current, cameraRef.current);
+    return mouse.current;
+  }, []);
+  const pick = useCallback(e => {
+    ray.current.setFromCamera(toNdc(e), cameraRef.current);
     const objs = [...pins.current.map(p => p.sphere), ...ptPins.current.map(p => p.mesh)];
     const hits = ray.current.intersectObjects(objs);
-    if (hits.length) { const s = hits[0].object.userData.rec; setSel(p => p && p.id === s.id ? null : s); return; }
+    return hits.length ? hits[0].object.userData.rec : null;
+  }, [toNdc]);
+  // The canvas, or the wrapper itself: while a pointer is captured the browser retargets its events (including contextmenu) to the wrapper.
+  const onCanvas = e => e.target === rendererRef.current?.domElement || e.target === wrapRef.current;
+  const endDrag = useCallback(() => { drag.current = null; if (wrapRef.current) wrapRef.current.style.cursor = "grab"; }, []);
+
+  const pd = useCallback(e => {
+    if (!onCanvas(e) || drag.current || (e.button !== 0 && e.button !== 2)) return;
+    const rotate = e.button === 2 || e.altKey || e.ctrlKey;
+    const nd = toNdc(e), cam0 = snapshotCamera(cameraRef.current, orbit.current, TGT_X, TGT_Z);
+    let grab = null;
+    if (!rotate) { ray.current.setFromCamera(nd, cam0); grab = ray.current.ray.intersectPlane(GROUND, new THREE.Vector3()); }
     flyRef.current = null;
-    drag.current = { x: e.clientX, y: e.clientY, ...orbit.current, shift: e.shiftKey };
-  }, []);
+    drag.current = { id: e.pointerId, rotate, x: e.clientX, y: e.clientY, start: { ...orbit.current }, cam0, grab, moved: false, slop: e.pointerType === "touch" ? DRAG_PX_TOUCH : DRAG_PX };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, [toNdc]);
   const pm = useCallback(e => {
-    if (!drag.current) {
-      const wrap = wrapRef.current, r = wrap.getBoundingClientRect();
-      mouse.current.x = ((e.clientX - r.left) / r.width) * 2 - 1; mouse.current.y = -((e.clientY - r.top) / r.height) * 2 + 1;
-      ray.current.setFromCamera(mouse.current, cameraRef.current);
-      const objs = [...pins.current.map(p => p.sphere), ...ptPins.current.map(p => p.mesh)];
-      const hits = ray.current.intersectObjects(objs);
-      if (hits.length) { setHov(hits[0].object.userData.rec); wrap.style.cursor = "pointer"; }
-      else { setHov(null); wrap.style.cursor = "grab"; }
+    const d = drag.current;
+    if (d) {
+      if (e.pointerId !== d.id) return;
+      const dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (!d.moved) { if (Math.hypot(dx, dy) < d.slop) return; d.moved = true; setHov(null); wrapRef.current.style.cursor = "grabbing"; }
+      const o = orbit.current;
+      if (d.rotate) o.theta = d.start.theta + dx * 0.005;
+      else { const nd = toNdc(e), t = panTarget(d.cam0, d.grab, nd.x, nd.y, GROUND, d.start); if (t) { o.tx = t.tx; o.tz = t.tz; } }
       return;
     }
-    const dx = e.clientX - drag.current.x, dy = e.clientY - drag.current.y;
-    if (drag.current.shift) { orbit.current.tx = drag.current.tx - dx * 0.06; orbit.current.tz = drag.current.tz - dy * 0.06; }
-    else { orbit.current.theta = drag.current.theta + dx * 0.005; orbit.current.phi = Math.max(0.12, Math.min(1.45, drag.current.phi + dy * 0.005)); }
-  }, []);
-  const pu = useCallback(() => { drag.current = null; }, []);
-  const wheel = useCallback(e => { e.preventDefault(); orbit.current.dist = Math.max(22, Math.min(150, orbit.current.dist + e.deltaY * 0.06)); }, []);
+    if (!onCanvas(e)) { setHov(null); return; }
+    const s = pick(e);
+    if (s) { setHov(s); wrapRef.current.style.cursor = "pointer"; }
+    else { setHov(null); wrapRef.current.style.cursor = "grab"; }
+  }, [toNdc, pick]);
+  const pu = useCallback(e => {
+    const d = drag.current;
+    if (!d || e.pointerId !== d.id) return;
+    endDrag();
+    if (!d.rotate && !d.moved) { const s = pick(e); if (s) setSel(p => p && p.id === s.id ? null : s); }
+  }, [pick, endDrag]);
+  const pc = useCallback(e => { if (drag.current && e.pointerId === drag.current.id) endDrag(); }, [endDrag]);
+  const pl = useCallback(() => { if (!drag.current) setHov(null); }, []);
+  const ctxMenu = useCallback(e => { if (onCanvas(e)) e.preventDefault(); }, []);
+  const wheel = useCallback(e => { if (!onCanvas(e)) return; e.preventDefault(); orbit.current.dist = Math.max(22, Math.min(150, orbit.current.dist + e.deltaY * 0.06)); }, []);
+  // React registers onWheel as a passive listener, where preventDefault() is ignored and logs a console error.
+  // A native non-passive listener makes the preventDefault() above work.
+  useEffect(() => {
+    const wrap = wrapRef.current; if (!wrap) return;
+    wrap.addEventListener("wheel", wheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", wheel);
+  }, [wheel]);
 
   useEffect(() => {
     const mv = e => {
@@ -472,11 +510,11 @@ export default function TimeMap() {
   }, []);
 
   const onCanvasKey = useCallback(e => {
-    const o = orbit.current, k = e.key;
-    if (k === "ArrowLeft") { if (e.shiftKey) o.tx -= 2; else o.theta -= 0.12; }
-    else if (k === "ArrowRight") { if (e.shiftKey) o.tx += 2; else o.theta += 0.12; }
-    else if (k === "ArrowUp") { if (e.shiftKey) o.tz -= 2; else o.phi = Math.min(1.45, o.phi + 0.08); }
-    else if (k === "ArrowDown") { if (e.shiftKey) o.tz += 2; else o.phi = Math.max(0.12, o.phi - 0.08); }
+    // Arrows pan along the screen axes (step grows with zoom); Shift+Left/Right rotates. Elevation is locked.
+    const o = orbit.current, k = e.key, step = o.dist * 0.03;
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[k];
+    if (arrow && e.shiftKey) { if (arrow[0] === 0) return; o.theta += arrow[0] * 0.12; }
+    else if (arrow) { const [dx, dz] = screenStep(o.theta, arrow[0] * step, arrow[1] * step); o.tx += dx; o.tz += dz; }
     else if (k === "+" || k === "=") { o.dist = Math.max(22, o.dist - 4); }
     else if (k === "-" || k === "_") { o.dist = Math.min(150, o.dist + 4); }
     else return;
@@ -521,7 +559,7 @@ export default function TimeMap() {
           <span><b style={{ color: T.strong }}>{fl.length}</b> sites</span>
           {flPts.length > 0 && <span><b style={{ color: isPtColor(T, theme) }}>{flPts.length}</b> institutions</span>}
           <span><b style={{ color: T.accent }}>{activeCount}</b> present in {fy(year)}</span>
-          <span className="tm-hint" style={{ color: T.muted }}>drag orbit {String.fromCharCode(183)} shift-drag pan {String.fromCharCode(183)} scroll zoom</span>
+          <span className="tm-hint" style={{ color: T.muted }}>drag pan {String.fromCharCode(183)} right-drag rotate {String.fromCharCode(183)} scroll zoom</span>
           <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} aria-pressed={theme === "light"} style={{ ...S.btn, minHeight: 28, padding: "5px 11px", borderRadius: 14, display: "flex", alignItems: "center", gap: 6 }} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
             <span aria-hidden="true">{theme === "dark" ? "☀️" : "\u{1F319}"}</span>{theme === "dark" ? "Light" : "Dark"}
           </button>
@@ -582,9 +620,9 @@ export default function TimeMap() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", minWidth: 0 }}>
           <div ref={wrapRef} tabIndex={0} role="application"
             aria-roledescription="Interactive 3D time map"
-            aria-label={`3D map of ${fl.length} UNESCO heritage sites${flPts.length ? ` and ${flPts.length} institutions` : ""}, ${activeCount} already begun by ${fy(year)}. Each site's column rises from the map to its origin year, so older sites are taller. Arrow keys orbit the view, Shift plus arrow keys pan, plus and minus keys zoom. Tab to the sites list that follows for a text version you can browse and select.`}
+            aria-label={`3D map of ${fl.length} UNESCO heritage sites${flPts.length ? ` and ${flPts.length} institutions` : ""}, ${activeCount} already begun by ${fy(year)}. Each site's column rises from the map to its origin year, so older sites are taller. Arrow keys pan the view, Shift plus left or right arrow rotates it, plus and minus keys zoom. Tab to the sites list that follows for a text version you can browse and select.`}
             onKeyDown={onCanvasKey}
-            style={{ flex: 1, minWidth: 0, position: "relative", cursor: "grab", touchAction: "none", overflow: "hidden" }} onPointerDown={pd} onPointerMove={pm} onPointerUp={pu} onPointerLeave={pu} onWheel={wheel}>
+            style={{ flex: 1, minWidth: 0, position: "relative", cursor: "grab", touchAction: "none", overflow: "hidden" }} onPointerDown={pd} onPointerMove={pm} onPointerUp={pu} onPointerCancel={pc} onLostPointerCapture={pc} onPointerLeave={pl} onContextMenu={ctxMenu}>
             <div className="tm-sites tm-sr">
               <table>
                 <caption>{`Sites currently shown (${fl.length}). This table is the text alternative to the 3D map. Activate a site name to open its details panel.`}</caption>
@@ -651,7 +689,7 @@ export default function TimeMap() {
                   <p style={{ margin: "0 0 10px" }}><b style={{ color: T.text }}>3. When it began.</b> Pin height: the older a site's origin, the taller its pin. Sites older than 5000 BCE clamp to the top.</p>
                   <p style={{ margin: "0 0 10px" }}><b style={{ color: T.text }}>4. Time itself.</b> The timeline sweeps a translucent "now" plane down through history. A site lights up when its origin year arrives and stays lit, since heritage sites still exist today, so as you sweep forward you watch them accumulate. The detail panel still shows each site's original period of creation or use.</p>
                   <p style={{ margin: "0 0 10px" }}><b style={{ color: T.text }}>5. What kind.</b> Color encodes the heritage layer (religion, technology, urban...). Marker shape encodes the data source.</p>
-                  <p style={{ margin: "0 0 6px", color: T.muted }}>Drag to orbit, Shift-drag to pan, scroll to zoom. Keyboard: arrows orbit, Shift+arrows pan, plus/minus zoom. Click any pin or use the sites table (reachable by Tab) to open details. The sun/moon button switches between light and dark mode.</p>
+                  <p style={{ margin: "0 0 6px", color: T.muted }}>Drag to pan, right-drag (or Alt-drag) to rotate, scroll to zoom. Keyboard: arrows pan, Shift+left/right arrows rotate, plus/minus zoom. Click any pin or use the sites table (reachable by Tab) to open details. The sun/moon button switches between light and dark mode.</p>
                 </div>
               </div>
             )}

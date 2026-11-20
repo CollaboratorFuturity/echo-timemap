@@ -13,7 +13,7 @@ Multi-phase build plan for echo-timemap. Each phase produces a runnable incremen
 ### Backend
 - [x] FastAPI + PostgreSQL + Alembic scaffold, notifications removed
 - [x] `/health` endpoint with passing pytest (`make test`)
-- [ ] Generate production `.env` on the server (`SECRET_KEY`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD` via `openssl rand -hex 32`)
+- [x] Generate production `.env` on the server (`SECRET_KEY`, `ADMIN_API_KEY`, `POSTGRES_PASSWORD` via `openssl rand -hex 32`)
 - [x] Stop publishing the backend port on the server's external interfaces (backend and frontend bound to `127.0.0.1`; only the tunnel route faces the public)
 
 ### Frontend
@@ -22,14 +22,16 @@ Multi-phase build plan for echo-timemap. Each phase produces a runnable incremen
 - [x] Body margin reset in `index.html` to match the prototype page
 - [x] `make check` and `npm run build` pass; production build renders in Chromium with zero console errors and zero third-party requests, matching the prototype screenshot (104 of 1,296,000 pixels differ, anti-aliasing)
 - [x] Full Docker stack (db, backend, frontend nginx) builds and serves the map with `/api` proxied to the backend
+- [x] Camera controls reworked (2026-11-18): left-drag pans, right-drag rotates, fixed 45° elevation, north-up start, wheel zoom, keyboard pan/rotate/zoom; math in `cameraRig.js`; verified with a camera-math check and 49 browser checks
+- [ ] On-screen camera controls for WCAG 2.5.7, touch rotate and zoom, reset view (see TODO)
 - [ ] Security headers in `frontend/nginx.conf` (CSP, `X-Content-Type-Options`, `Referrer-Policy`)
 - [ ] WCAG 2.2 AA re-audit of the v2 component (existing audit covers the earlier a11y build)
 
 ### Deploy
 - [x] Choose server and ports: medusa, 8109 and 8110, recorded in `docs/SERVER-INFRASTRUCTURE.md`
-- [ ] Assign the public hostname and record it in `docs/SERVER-INFRASTRUCTURE.md`
-- [ ] Add the hostname as a published application route on medusa's Cloudflare tunnel and to `ALLOWED_ORIGINS`
-- [ ] `make deploy` on the server; verify the map loads on the public URL
+- [x] Assign the public hostname: `5dtimemap.echoimmersive.eu`, recorded in `docs/SERVER-INFRASTRUCTURE.md`
+- [x] Add the hostname as a published application route on medusa's Cloudflare tunnel and to `ALLOWED_ORIGINS`
+- [x] Deploy on medusa with `sudo docker compose up -d --build`; map loads on the public URL (2026-11-09)
 
 ---
 
